@@ -1,0 +1,4 @@
+#!/bin/sh
+# Homebrew Channel startup hook for voice-off. Skip a boot: touch /media/developer/voice-off/disabled
+[ -e /media/developer/voice-off/disabled ] && exit 0
+/media/developer/voice-off/voice-off.sh start
