@@ -14,9 +14,9 @@ HOOK=$HOOKDIR/50-voiceoff
 
 mkdir -p "$DEST"
 if [ "$SRC" != "$DEST" ]; then
-    cp "$SRC/voice-off.sh" "$SRC/stub" "$DEST/"
+    cp "$SRC/voice-off.sh" "$SRC/stub" "$SRC/lsnull" "$DEST/"
 fi
-chmod 755 "$DEST/voice-off.sh" "$DEST/stub"
+chmod 755 "$DEST/voice-off.sh" "$DEST/stub" "$DEST/lsnull"
 echo "installed to $DEST"
 
 if [ "$1" = "--boot" ]; then

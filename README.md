@@ -34,9 +34,18 @@ That's roughly a quarter of one core used constantly. Only three of the four cor
 | `/usr/bin/com.webos.app.voice` | SAM (preloaded once by preloadmanager) |
 
 How it works:
-1. It bind-mounts `stub` (`exit 0`) over each binary first, so anything respawned by systemd, the luna hub or SAM runs the no-op.
-2. It closes the preloaded voice app and stops the two systemd units cleanly. `Restart=on-failure` doesn't fire after a manual stop.
-3. It kills the remaining bus-activated processes.
+1. It stops the two systemd units (`voiceinput`, `voiceconductor`).
+2. It bind-mounts `lsnull` over those two binaries and `stub` (`exit 0`) over the rest, so anything respawned by systemd, the luna hub or SAM runs a stand-in.
+3. It closes the preloaded voice app and kills the remaining bus-activated processes.
+4. It starts the two units again. systemd now runs `lsnull` under their names (`Restart=on-failure` still applies).
+
+### Why `lsnull` and not the stub for `voiceinput`/`voiceconductor`
+
+Both are registered as `Type=static` luna services. The hub holds calls to a static service until it registers, and never times them out itself. With a plain stub, which exits without registering, every caller waits on its own client timeout. LG's Settings app calls `voiceinput/setting/getActivation` and `voiceconductor/getSupportedLanguages` on open. With the stub it took ~8.0 s to appear; with `lsnull` it takes ~1.3 s.
+
+`lsnull` registers the service's bus names (`com.webos.service.voiceinput` plus its `.sync` name, and `com.webos.service.voiceconductor`) and nothing else. luna-service2 then answers every call immediately with `{"returnValue":false,"errorCode":-1,"errorText":"Unknown method ..."}`. It runs from the original binary path, so LG's own role files (`exeName` + `allowedNames`) permit the registration.
+
+It has no methods, no network code and no microphone access, and it doesn't touch any voice data. It's about 60 lines of C (`lsnull.c`).
 
 **What you lose:** the remote's mic button and all voice and assistant features.
 
@@ -46,6 +55,19 @@ How it works:
 
 - A rooted LG webOS TV with [Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel) and SSH
 - Tested on an LG C2 OLED, webOS 24 (9.2.2), software 23.25.55. Other versions may use different binary names. The script skips any binary that's missing.
+
+## Building `lsnull`
+
+A prebuilt `lsnull` is included (32-bit ARM, soft-float EABI). To rebuild it:
+
+```sh
+sudo apt install gcc-arm-linux-gnueabi   # Debian/Ubuntu
+./build.sh
+```
+
+It uses no libc and links only the TV's `libluna-service2.so.3` and `libglib-2.0.so.0`, so the cross-compiler's glibc version doesn't matter. The build is reproducible: with Ubuntu 24.04's `gcc-arm-linux-gnueabi` (GCC 13.3), the included binary's sha256 is `07978c46877e38c3103cb01555f9ff4d0c0c75604518ed6c45199f94e0642a94`.
+
+If `lsnull` is missing, `voice-off.sh` falls back to the stub for every binary (the old behaviour, including the slow Settings).
 
 ## Install
 
@@ -67,7 +89,7 @@ The hook runs from Homebrew Channel's startup script, which runs `/var/lib/webos
 ## Use
 
 ```sh
-/media/developer/voice-off/voice-off.sh status   # what's stubbed / still running
+/media/developer/voice-off/voice-off.sh status   # what's covered (lsnull/stub) / still running
 /media/developer/voice-off/voice-off.sh stop     # restore originals now
 cat /media/developer/voice-off/voice-off.log     # actions log
 ```
